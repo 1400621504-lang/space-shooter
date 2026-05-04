@@ -2,30 +2,29 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>星际射手</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
   body {
-    background: #0a0a0a;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100vh;
-    overflow: hidden;
     font-family: 'Courier New', monospace;
   }
-  canvas { border: 1px solid #222; cursor: none; }
-  #ui {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #0f0;
-    font-size: 18px;
-    pointer-events: none;
-    display: flex;
-    gap: 40px;
+  canvas {
+    display: block;
+    border: 1px solid #222;
+    touch-action: none;
   }
   #overlay {
     position: absolute;
@@ -38,13 +37,14 @@
   }
   #overlay .msg {
     color: #fff;
-    font-size: 42px;
+    font-size: clamp(24px, 5vw, 42px);
     text-align: center;
     text-shadow: 0 0 20px #f0f;
     line-height: 1.6;
+    padding: 20px;
   }
   #overlay .sub {
-    font-size: 18px;
+    font-size: clamp(14px, 2.5vw, 18px);
     color: #aaa;
   }
 </style>
@@ -53,11 +53,29 @@
 <canvas id="game"></canvas>
 <div id="overlay"><div class="msg" id="msg"></div></div>
 <script>
-// ===== 星际射手 — 单文件 2D 射击游戏 =====
+// ===== 星际射手 — 单文件 2D 射击游戏（支持手机触屏）=====
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-const W = canvas.width = 480;
-const H = canvas.height = 720;
+
+// 游戏逻辑基础尺寸
+const BASE_W = 480;
+const BASE_H = 720;
+
+// 缩放适配
+function resize() {
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight;
+  const scale = Math.min(maxW / BASE_W, maxH / BASE_H);
+  canvas.width = BASE_W;
+  canvas.height = BASE_H;
+  canvas.style.width = (BASE_W * scale) + 'px';
+  canvas.style.height = (BASE_H * scale) + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+const W = BASE_W;
+const H = BASE_H;
 
 // 状态
 const STATE = { MENU: 0, PLAY: 1, OVER: 2 };
@@ -73,7 +91,7 @@ let screenShake = 0;
 
 // 玩家
 const player = {
-  x: W / 2, y: H - 100,
+  x: W / 2, y: H - 120,
   w: 32, h: 32,
   speed: 6,
   hp: 5,
@@ -87,6 +105,9 @@ let enemies = [];
 let enemyBullets = [];
 let stars = [];
 
+// 检测是否为触屏设备
+const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
 // 初始化星星背景
 for (let i = 0; i < 120; i++) {
   stars.push({
@@ -97,24 +118,91 @@ for (let i = 0; i < 120; i++) {
   });
 }
 
-// 按键
+// ===== 输入：键盘 =====
 const keys = {};
 window.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-// 鼠标追踪（用于瞄准线）
-let mouseX = W / 2, mouseY = H / 2;
-canvas.addEventListener('mousemove', e => {
+// ===== 输入：触屏 / 鼠标拖拽 =====
+let touching = false;
+let touchId = null;
+
+function getCanvasPos(e) {
   const rect = canvas.getBoundingClientRect();
-  mouseX = e.clientX - rect.left;
-  mouseY = e.clientY - rect.top;
+  const scaleX = BASE_W / rect.width;
+  const scaleY = BASE_H / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY,
+  };
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === STATE.MENU) { startGame(); return; }
+  if (state === STATE.OVER) { startGame(); return; }
+  if (e.changedTouches.length > 0) {
+    const t = e.changedTouches[0];
+    touchId = t.identifier;
+    const pos = getCanvasPos(t);
+    player.x = pos.x;
+    player.y = pos.y;
+    touching = true;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (let t of e.changedTouches) {
+    if (t.identifier === touchId) {
+      const pos = getCanvasPos(t);
+      player.x = pos.x;
+      player.y = pos.y;
+    }
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (let t of e.changedTouches) {
+    if (t.identifier === touchId) {
+      touching = false;
+      touchId = null;
+    }
+  }
 });
 
-// 射击
-canvas.addEventListener('click', () => {
+canvas.addEventListener('touchcancel', () => {
+  touching = false;
+  touchId = null;
+});
+
+// 鼠标点击
+canvas.addEventListener('click', e => {
   if (state === STATE.MENU) { startGame(); return; }
   if (state === STATE.OVER) { startGame(); return; }
 });
+
+// 鼠标拖拽（桌面端用鼠标也能拖飞船）
+let mouseDown = false;
+canvas.addEventListener('mousedown', e => {
+  if (state === STATE.MENU) return;
+  if (state === STATE.OVER) return;
+  mouseDown = true;
+  const pos = getCanvasPos(e);
+  player.x = pos.x;
+  player.y = pos.y;
+});
+window.addEventListener('mousemove', e => {
+  if (mouseDown && state === STATE.PLAY) {
+    const pos = getCanvasPos(e);
+    player.x = pos.x;
+    player.y = pos.y;
+  }
+});
+window.addEventListener('mouseup', () => { mouseDown = false; });
+
+// 键盘空格启动
 window.addEventListener('keydown', e => {
   if (e.key === ' ' && state === STATE.MENU) startGame();
   if (e.key === ' ' && state === STATE.OVER) startGame();
@@ -123,7 +211,7 @@ window.addEventListener('keydown', e => {
 function startGame() {
   state = STATE.PLAY;
   score = 0; wave = 1; frame = 0;
-  player.x = W / 2; player.y = H - 100; player.hp = 5; player.invincible = 0; player.power = 1;
+  player.x = W / 2; player.y = H - 120; player.hp = 5; player.invincible = 0; player.power = 1;
   bullets = []; enemies = []; enemyBullets = []; particles = []; screenShake = 0;
   document.getElementById('msg').innerHTML = '';
 }
@@ -214,7 +302,7 @@ function update() {
 
   if (state !== STATE.PLAY) return;
 
-  // 玩家移动
+  // 键盘移动
   if (keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
   if (keys['ArrowRight'] || keys['d']) player.x += player.speed;
   if (keys['ArrowUp'] || keys['w']) player.y -= player.speed;
@@ -239,10 +327,7 @@ function update() {
   }
 
   // 更新子弹
-  for (let b of bullets) {
-    b.x += b.vx;
-    b.y += b.vy;
-  }
+  for (let b of bullets) { b.x += b.vx; b.y += b.vy; }
   bullets = bullets.filter(b => b.y > -20);
 
   // 更新敌人子弹
@@ -252,7 +337,6 @@ function update() {
   // 更新敌人
   for (let e of enemies) {
     e.y += e.speed;
-    // 敌人射击
     if (frame % (e.type === 'fast' ? 90 : 120) === 0 && e.y > 30 && e.y < H * 0.7) {
       enemyShoot(e);
     }
@@ -278,7 +362,6 @@ function update() {
           score += e.score;
           spawnParticles(e.x, e.y, '#f80', 15);
           enemies.splice(j, 1);
-          // 概率掉强化
           if (Math.random() < 0.15 && player.power < 3) player.power++;
         }
         break;
@@ -327,7 +410,8 @@ function update() {
   if (player.hp <= 0) {
     state = STATE.OVER;
     spawnParticles(player.x, player.y, '#fff', 40);
-    document.getElementById('msg').innerHTML = `GAME OVER<br><span class="sub">得分: ${score} | 第 ${wave} 波<br>点击或按空格重新开始</span>`;
+    const tip = isTouchDevice ? '点击屏幕重新开始' : '点击或按空格重新开始';
+    document.getElementById('msg').innerHTML = `GAME OVER<br><span class="sub">得分: ${score} | 第 ${wave} 波<br>${tip}</span>`;
   }
 }
 
@@ -336,7 +420,6 @@ function draw() {
   ctx.fillStyle = '#050510';
   ctx.fillRect(0, 0, W, H);
 
-  // 屏幕震动
   let sx = 0, sy = 0;
   if (screenShake > 0) {
     sx = (Math.random() - 0.5) * screenShake * 1.5;
@@ -382,7 +465,6 @@ function draw() {
     const colors = { basic: '#e44', fast: '#4cf', tank: '#c4f' };
     ctx.fillStyle = colors[e.type];
     ctx.beginPath();
-    // 六边形
     const cx = e.x, cy = e.y, r = e.w / 2;
     for (let i = 0; i < 6; i++) {
       const a = (Math.PI * 2 / 6) * i - Math.PI / 2;
@@ -422,7 +504,6 @@ function draw() {
       ctx.shadowBlur = 14;
       ctx.fillStyle = '#0f0';
       ctx.beginPath();
-      // 三角飞船
       ctx.moveTo(player.x, player.y - player.h / 2);
       ctx.lineTo(player.x - player.w / 2, player.y + player.h / 2);
       ctx.lineTo(player.x + player.w / 2, player.y + player.h / 2);
@@ -432,7 +513,7 @@ function draw() {
       ctx.lineWidth = 2;
       ctx.stroke();
       // 引擎火焰
-      ctx.fillStyle = frames % 6 < 3 ? '#f80' : '#ff0';
+      ctx.fillStyle = frame % 6 < 3 ? '#f80' : '#ff0';
       ctx.beginPath();
       ctx.moveTo(player.x - 6, player.y + player.h / 2);
       ctx.lineTo(player.x, player.y + player.h / 2 + 12 + Math.random() * 6);
@@ -453,24 +534,10 @@ function draw() {
   ctx.fillText(`火力: Lv${player.power}`, W - 120, 30);
   ctx.fillText(`最高: ${highScore}`, W - 120, 50);
 
-  // 菜单提示
+  // 菜单 / 游戏结束提示
   if (state === STATE.MENU) {
-    document.getElementById('msg').innerHTML = `星际射手<br><span class="sub">WASD 移动 | 自动射击<br>点击或按空格开始</span>`;
-  }
-
-  // 准星 (游戏中)
-  if (state === STATE.PLAY) {
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(mouseX, mouseY, 12, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(mouseX - 18, mouseY); ctx.lineTo(mouseX - 6, mouseY);
-    ctx.moveTo(mouseX + 6, mouseY); ctx.lineTo(mouseX + 18, mouseY);
-    ctx.moveTo(mouseX, mouseY - 18); ctx.lineTo(mouseX, mouseY - 6);
-    ctx.moveTo(mouseX, mouseY + 6); ctx.lineTo(mouseX, mouseY + 18);
-    ctx.stroke();
+    const tip = isTouchDevice ? '手指拖动飞船 | 自动射击\n点击屏幕开始' : 'WASD 移动 | 鼠标拖拽飞船\n点击或按空格开始';
+    document.getElementById('msg').innerHTML = `星际射手<br><span class="sub">${tip}</span>`;
   }
 }
 
