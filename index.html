@@ -146,7 +146,6 @@ canvas.addEventListener('touchstart', e => {
     touchId = t.identifier;
     const pos = getCanvasPos(t);
     player.x = pos.x;
-    player.y = pos.y;
     touching = true;
   }
 }, { passive: false });
@@ -157,7 +156,6 @@ canvas.addEventListener('touchmove', e => {
     if (t.identifier === touchId) {
       const pos = getCanvasPos(t);
       player.x = pos.x;
-      player.y = pos.y;
     }
   }
 }, { passive: false });
@@ -191,13 +189,11 @@ canvas.addEventListener('mousedown', e => {
   mouseDown = true;
   const pos = getCanvasPos(e);
   player.x = pos.x;
-  player.y = pos.y;
 });
 window.addEventListener('mousemove', e => {
   if (mouseDown && state === STATE.PLAY) {
     const pos = getCanvasPos(e);
     player.x = pos.x;
-    player.y = pos.y;
   }
 });
 window.addEventListener('mouseup', () => { mouseDown = false; });
@@ -231,16 +227,16 @@ function spawnEnemy() {
     w: type === 'tank' ? 38 : 26,
     h: type === 'tank' ? 38 : 26,
     type,
-    hp: type === 'tank' ? 3 : 1,
-    maxHp: type === 'tank' ? 3 : 1,
-    speed: type === 'fast' ? 3.2 : (type === 'tank' ? 1.2 : 2),
+    hp: type === 'tank' ? 2 : 1,
+    maxHp: type === 'tank' ? 2 : 1,
+    speed: type === 'fast' ? 2.4 : (type === 'tank' ? 0.9 : 1.5),
     score: type === 'tank' ? 300 : (type === 'fast' ? 200 : 100),
   };
   enemies.push(e);
 }
 
 function spawnWave() {
-  const count = 3 + wave * 2;
+  const count = 2 + wave;
   for (let i = 0; i < count; i++) {
     setTimeout(() => { if (state === STATE.PLAY) spawnEnemy(); }, i * 250);
   }
@@ -263,7 +259,7 @@ function enemyShoot(e) {
   const dx = player.x - e.x;
   const dy = player.y - e.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-  const speed = 4;
+  const speed = 3;
   enemyBullets.push({
     x: e.x, y: e.y + e.h / 2,
     vx: (dx / dist) * speed,
@@ -290,7 +286,7 @@ function spawnParticles(x, y, color, count) {
 function damagePlayer() {
   if (player.invincible > 0) return;
   player.hp--;
-  player.invincible = 60;
+  player.invincible = 80;
   screenShake = 15;
   spawnParticles(player.x, player.y, '#f44', 10);
   if (player.power > 1) player.power--;
@@ -318,10 +314,10 @@ function update() {
   if (frame % 8 === 0) shoot();
 
   // 生成波次
-  if (frame % 300 === 0 || (enemies.length === 0 && enemyBullets.length === 0 && frame > 60)) {
+  if (frame % 420 === 0 || (enemies.length === 0 && enemyBullets.length === 0 && frame > 60)) {
     if (enemies.length === 0 && enemyBullets.length === 0) {
       if (frame > 60) { wave++; spawnWave(); }
-    } else if (frame % 300 === 0) {
+    } else if (frame % 420 === 0) {
       spawnWave();
     }
   }
@@ -337,7 +333,7 @@ function update() {
   // 更新敌人
   for (let e of enemies) {
     e.y += e.speed;
-    if (frame % (e.type === 'fast' ? 90 : 120) === 0 && e.y > 30 && e.y < H * 0.7) {
+    if (frame % (e.type === 'fast' ? 120 : 160) === 0 && e.y > 30 && e.y < H * 0.6) {
       enemyShoot(e);
     }
   }
